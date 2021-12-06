@@ -1,0 +1,32 @@
+{
+  "name": "adonis-rabbitmq-provider",
+  "version": "1.0.0",
+  "description": "Provider for handle RabbitMQ messages designed for AdonisJs 4.1",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lucianostegun/adonis-rabbitmq-provider.git"
+  },
+  "keywords": [
+    "adonis",
+    "adonisjs",
+    "rabbitmq",
+    "provider",
+    "rabbit",
+    "queue"
+  ],
+  "author": "Luciano Stegun",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/lucianostegun/adonis-rabbitmq-provider/issues"
+  },
+  "homepage": "https://github.com/lucianostegun/adonis-rabbitmq-provider#readme",
+  "dependencies": {
+    "amqplib": "^0.8.0",
+    "moment": "^2.29.1",
+    "uuid": "^8.3.2"
+  }
+}
