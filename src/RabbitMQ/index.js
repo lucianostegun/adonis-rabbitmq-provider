@@ -55,9 +55,9 @@ class RabbitMQ {
     });
   }
 
-  createChannel(channelName) {
+  async createChannel(channelName) {
 
-    if (!this.checkConnection()) {
+    if (!(await this.checkConnection())) {
       return false;
     }
 
@@ -87,7 +87,7 @@ class RabbitMQ {
 
   async send(queueName, payload, options, channelName='DEFAULT') {
     
-    if (!this.checkConnection()) {
+    if (!(await this.checkConnection())) {
       return false;
     }
 
@@ -121,7 +121,7 @@ class RabbitMQ {
   
   async getMessage(queueName, channelName='DEFAULT') {
 
-    if (!this.checkConnection()) {
+    if (!(await this.checkConnection())) {
       return false;
     }
 
@@ -150,7 +150,7 @@ class RabbitMQ {
   
   async consume(queueName, callback, channelName='DEFAULT') {
 
-    if (!this.checkConnection()) {
+    if (!(await this.checkConnection())) {
       return false;
     }
 
@@ -158,13 +158,17 @@ class RabbitMQ {
     
     queueName = this.completeQueueName(queueName);
 
+    this.channelList[channelName].assertQueue(queueName, {
+      durable: true,
+    });
+
     this.channelList[channelName].prefetch(1);
     this.channelList[channelName].consume(queueName, callback)
   }
 
   async ack(queueName, data, channelName='DEFAULT') {
 
-    if (!this.checkConnection()) {
+    if (!(await this.checkConnection())) {
       return false;
     }
 
@@ -181,7 +185,7 @@ class RabbitMQ {
 
   async nack(queueName, data, channelName='DEFAULT') {
 
-    if (!this.checkConnection()) {
+    if (!(await this.checkConnection())) {
       return false;
     }
 
@@ -196,11 +200,13 @@ class RabbitMQ {
     this.channelList[channelName].nack(data);
   }
 
-  checkConnection() {
+  async checkConnection() {
     
     if (!this.connected) {
-      console.warn('RabbitMQProvider: Not connected');
-      return false;
+      if (!(await this.connect())) {
+        console.warn('RabbitMQProvider: Not connected');
+        return false;
+      }
     }
 
     return true;
