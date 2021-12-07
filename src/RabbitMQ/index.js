@@ -31,26 +31,26 @@ class RabbitMQ {
         this.connection = connection;
 
         this.connected = true;
-        resolve();
-      });
+        resolve(this);
 
-      process.on('exit', code => {
+        process.on('exit', code => {
         
-        if (this.connected) {
-          
-          for (let channelName in this.channelList) {
-            if (channelName !== 'length') {
-              this.channelList[channelName].close();
-              delete this.channelList[channelName];
-              this.channelList.length--;
-            }
-          };
-
-          this.connection.close();
-          this.connected = false;
-        }
-
-        console.log(`Closing connection with RabbitMQ`);
+          if (this.connected) {
+            
+            for (let channelName in this.channelList) {
+              if (channelName !== 'length') {
+                this.channelList[channelName].close();
+                delete this.channelList[channelName];
+                this.channelList.length--;
+              }
+            };
+  
+            this.connection.close();
+            this.connected = false;
+          }
+  
+          console.log(`Closing connection with RabbitMQ`);
+        });
       });
     });
   }
@@ -85,7 +85,7 @@ class RabbitMQ {
     return `${this.queuePrefix}/${queueName}`;
   }
 
-  async send(queueName, message, options, channelName='DEFAULT') {
+  async send(queueName, payload, options, channelName='DEFAULT') {
     
     if (!this.checkConnection()) {
       return false;
@@ -100,8 +100,13 @@ class RabbitMQ {
 
     queueName = this.completeQueueName(queueName);
 
-    if (typeof(message) == 'object') {
-      message = JSON.stringify(message);
+    if (typeof(payload) == 'object') {
+
+      if (!payload.hasOwnProperty('attempts')) {
+        payload.attempts = 0;
+      }
+      
+      payload = JSON.stringify(payload);
       options.contentType = 'application/json';
     }
 
@@ -109,7 +114,7 @@ class RabbitMQ {
       durable: true,
     });
 
-    await this.channelList[channelName].sendToQueue(queueName, Buffer.from(message), options);
+    await this.channelList[channelName].sendToQueue(queueName, Buffer.from(payload), options);
 
     return options.messageId;
   }
@@ -141,6 +146,20 @@ class RabbitMQ {
     });
 
     return promise;
+  }
+  
+  async consume(queueName, callback, channelName='DEFAULT') {
+
+    if (!this.checkConnection()) {
+      return false;
+    }
+
+    await this.createChannel(channelName);
+    
+    queueName = this.completeQueueName(queueName);
+
+    this.channelList[channelName].prefetch(1);
+    this.channelList[channelName].consume(queueName, callback)
   }
 
   async ack(queueName, data, channelName='DEFAULT') {
