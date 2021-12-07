@@ -109,6 +109,8 @@ class RabbitMQ {
 
       if (!payload.hasOwnProperty('attempts')) {
         payload.attempts = 0;
+      } else {
+        payload.attempts++;
       }
       
       payload = JSON.stringify(payload);
