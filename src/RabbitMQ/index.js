@@ -8,16 +8,22 @@ class RabbitMQ {
     this.connectUrl  = Config.get('queue.url');
     this.queuePrefix = Config.get('queue.prefix');
     this.connection  = null;
-    this.channelList = {length: 0};
+    this.channelList = {};
+    this.connectionPromise = null;
     this.connected   = false;
   }
 
   connect() {
 
-    return new Promise((resolve, reject) => {
+    if (this.connectionPromise) {
+      return this.connectionPromise;
+    }
+
+    this.connectionPromise = new Promise((resolve, reject) => {
 
       if (this.connected) {
         resolve();
+        this.connectionPromise = null
         return;
       }
 
@@ -28,7 +34,8 @@ class RabbitMQ {
           return reject(err);
         }
 
-        this.connection = connection;
+        this.connection        = connection;
+        this.connectionPromise = null;
 
         this.connected = true;
         resolve(this);
@@ -38,11 +45,8 @@ class RabbitMQ {
           if (this.connected) {
             
             for (let channelName in this.channelList) {
-              if (channelName !== 'length') {
-                this.channelList[channelName].close();
-                delete this.channelList[channelName];
-                this.channelList.length--;
-              }
+              this.channelList[channelName].close();
+              delete this.channelList[channelName];
             };
   
             this.connection.close();
@@ -53,6 +57,8 @@ class RabbitMQ {
         });
       });
     });
+
+    return this.connectionPromise;
   }
 
   async createChannel(channelName) {
@@ -61,24 +67,23 @@ class RabbitMQ {
       return false;
     }
 
-    return new Promise((resolve, reject) => {
+    if (this.channelList.hasOwnProperty(channelName)) {
+      return await this.channelList[channelName];
+    }
 
-      if (this.channelList.hasOwnProperty(channelName)) {
-        return resolve();;
-      }
-      
+    this.channelList[channelName] = new Promise((resolve, reject) => {
+
       this.connection.createChannel(async (err, channel) => {
 
         if (err) {
           return reject(err);
         }
         
-        this.channelList[channelName] = channel;
-        this.channelList.length++;
-        
-        resolve();
+        resolve(channel);
       });
     });
+
+    this.channelList[channelName] = await this.channelList[channelName];
   }
 
   completeQueueName(queueName) {
