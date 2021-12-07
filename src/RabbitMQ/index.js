@@ -3,70 +3,134 @@ const uuid   = require('uuid');
 const moment = require('moment');
 
 class RabbitMQ {
+
   constructor (Config) {
     this.connectUrl  = Config.get('queue.url');
     this.queuePrefix = Config.get('queue.prefix');
     this.connection  = null;
-    this.channel     = null;
+    this.channelList = {length: 0};
     this.connected   = false;
   }
 
   connect() {
 
-    amqp.connect(this.connectUrl, async (err, connection) => {
+    return new Promise((resolve, reject) => {
 
-      this.connection = connection;
+      if (this.connected) {
+        resolve();
+        return;
+      }
 
-      connection.createChannel(async (err, channel) => {
-        this.channel = channel;
+      amqp.connect(this.connectUrl, async (err, connection) => {
+
+        if (err) {
+          this.connected = false;
+          return reject(err);
+        }
+
+        this.connection = connection;
+
+        this.connected = true;
+        resolve();
+      });
+
+      process.on('exit', code => {
+        
+        if (this.connected) {
+          
+          for (let channelName in this.channelList) {
+            if (channelName !== 'length') {
+              this.channelList[channelName].close();
+              delete this.channelList[channelName];
+              this.channelList.length--;
+            }
+          };
+
+          this.connection.close();
+          this.connected = false;
+        }
+
+        console.log(`Closing connection with RabbitMQ`);
       });
     });
+  }
 
-    process.on('exit', code => {
-      this.channel.close();
-      this.connection.close();
-      console.log(`Closing connection with RabbitMQ`);
+  createChannel(channelName) {
+
+    if (!this.checkConnection()) {
+      return false;
+    }
+
+    return new Promise((resolve, reject) => {
+
+      if (this.channelList.hasOwnProperty(channelName)) {
+        return resolve();;
+      }
+      
+      this.connection.createChannel(async (err, channel) => {
+
+        if (err) {
+          return reject(err);
+        }
+        
+        this.channelList[channelName] = channel;
+        this.channelList.length++;
+        
+        resolve();
+      });
     });
   }
 
-  completeQueueName(queue) {
-    return `${this.queuePrefix}/${queue}`;
+  completeQueueName(queueName) {
+    return `${this.queuePrefix}/${queueName}`;
   }
 
-  async send(queue, message, options) {
+  async send(queueName, message, options, channelName='DEFAULT') {
     
+    if (!this.checkConnection()) {
+      return false;
+    }
+
+    await this.createChannel(channelName);
+
     options = options || {};
     options.priority  = options.priority || 5;
     options.messageId = uuid.v4();
     options.timestamp = moment().unix();
 
-    queue = this.completeQueueName(queue);
+    queueName = this.completeQueueName(queueName);
 
     if (typeof(message) == 'object') {
       message = JSON.stringify(message);
       options.contentType = 'application/json';
     }
 
-    this.channel.assertQueue(queue, {
+    this.channelList[channelName].assertQueue(queueName, {
       durable: true,
     });
 
-    await this.channel.sendToQueue(queue, Buffer.from(message), options);
+    await this.channelList[channelName].sendToQueue(queueName, Buffer.from(message), options);
 
     return options.messageId;
   }
   
-  getMessage(queue) {
+  async getMessage(queueName, channelName='DEFAULT') {
+
+    if (!this.checkConnection()) {
+      return false;
+    }
+
+    await this.createChannel(channelName);
     
-    queue = this.completeQueueName(queue);
+    queueName = this.completeQueueName(queueName);
 
     const promise = new Promise((resolve, reject) => {
       
-      this.channel.assertQueue(queue, {
+      this.channelList[channelName].assertQueue(queueName, {
         durable: true,
       });
 
-      this.channel.get(queue, {noAck: false}, (err, data) => {
+      this.channelList[channelName].get(queueName, {noAck: false}, (err, data) => {
 
         if (data) {
           resolve(data);
@@ -79,26 +143,48 @@ class RabbitMQ {
     return promise;
   }
 
-  ack(queue, data) {
+  async ack(queueName, data, channelName='DEFAULT') {
 
-    queue = this.completeQueueName(queue);
+    if (!this.checkConnection()) {
+      return false;
+    }
 
-    this.channel.assertQueue(queue, {
+    await this.createChannel(channelName);
+
+    queueName = this.completeQueueName(queueName);
+
+    this.channelList[channelName].assertQueue(queueName, {
       durable: true,
     });
 
-    this.channel.ack(data);
+    this.channelList[channelName].ack(data);
   }
 
-  nack(queue, data) {
+  async nack(queueName, data, channelName='DEFAULT') {
 
-    queue = this.completeQueueName(queue);
+    if (!this.checkConnection()) {
+      return false;
+    }
 
-    this.channel.assertQueue(queue, {
+    await this.createChannel(channelName);
+
+    queueName = this.completeQueueName(queueName);
+
+    this.channelList[channelName].assertQueue(queueName, {
       durable: true,
     });
 
-    this.channel.nack(data);
+    this.channelList[channelName].nack(data);
+  }
+
+  checkConnection() {
+    
+    if (!this.connected) {
+      console.warn('RabbitMQProvider: Not connected');
+      return false;
+    }
+
+    return true;
   }
 }
 

@@ -28,7 +28,10 @@ class RabbitMQProvider extends ServiceProvider {
   boot () {
 
     const RabbitMQ = use('RabbitMQProvider');
-    RabbitMQ.connect();
+
+    RabbitMQ.connect().catch((err) => {
+      console.warn(`Could not connect to RabbitMQ service: ${err}`);
+    });
   }
 }
 

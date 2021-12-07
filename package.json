@@ -1,6 +1,6 @@
 {
   "name": "adonis-rabbitmq-provider",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "Provider for handle RabbitMQ messages designed for AdonisJs 4.1",
   "main": "index.js",
   "scripts": {
