@@ -5,12 +5,28 @@ const moment = require('moment');
 class RabbitMQ {
 
   constructor (Config) {
-    this.connectUrl  = Config.get('queue.url');
-    this.queuePrefix = Config.get('queue.prefix');
-    this.connection  = null;
-    this.channelList = {};
+    this.connectUrl        = Config.get('queue.url');
+    this.queuePrefix       = Config.get('queue.prefix');
+    this.connection        = null;
+    this.channelList       = {};
     this.connectionPromise = null;
-    this.connected   = false;
+    this.connected         = false;
+    this.connectedOnce     = false;
+  }
+
+  closeAll() {
+
+    if (this.connected) {
+              
+      for (let channelName in this.channelList) {
+        console.warn(`Close channel ${channelName}`)
+        this.channelList[channelName].close();
+        delete this.channelList[channelName];
+      };
+
+      this.connection.close();
+      this.connected = false;
+    }
   }
 
   connect() {
@@ -30,31 +46,33 @@ class RabbitMQ {
       amqp.connect(this.connectUrl, async (err, connection) => {
 
         if (err) {
-          this.connected = false;
+          this.connection        = null;
+          this.connectionPromise = null;
+          this.channelList       = {};
+          this.connected         = false;
           return reject(err);
         }
 
         this.connection        = connection;
         this.connectionPromise = null;
 
+        this.connection.on('close', () => {
+          console.warn(`Closing connection with RabbitMQ due an error`);
+          this.closeAll();
+        });
+
         this.connected = true;
         resolve(this);
 
-        process.on('exit', code => {
-        
-          if (this.connected) {
-            
-            for (let channelName in this.channelList) {
-              this.channelList[channelName].close();
-              delete this.channelList[channelName];
-            };
-  
-            this.connection.close();
-            this.connected = false;
-          }
-  
-          console.log(`Closing connection with RabbitMQ`);
-        });
+        if (!this.connectedOnce) {
+
+          this.connectedOnce = true;
+
+          process.on('exit', code => {
+            console.warn(`Closing connection with RabbitMQ`);
+            this.closeAll();
+          });
+        }
       });
     });
 
@@ -80,6 +98,18 @@ class RabbitMQ {
         }
         
         resolve(channel);
+
+        channel.channelName = channelName;
+
+        channel.on('close', (a,b,c) => {
+          console.warn(`Closing channel with RabbitMQ due an error`);
+          
+          try {
+            channel.close();
+          } catch(err) {}
+
+          delete this.channelList[channelName];
+        });
       });
     });
 
@@ -210,7 +240,10 @@ class RabbitMQ {
   async checkConnection() {
     
     if (!this.connected) {
-      if (!(await this.connect())) {
+      try {
+        await this.connect();
+        return true;
+      } catch (err) {
         console.warn('RabbitMQProvider: Not connected');
         return false;
       }
